@@ -19,7 +19,7 @@ Intents also run outside the SwiftUI view tree. The system creates intent and en
 
 `build-app.sh` reproduces Xcode's metadata phase:
 
-- `swift build` runs with `-emit-const-values -const-gather-protocols-list Scripts/app-intents-const-protocols.json`, the compiler output the processor consumes.
+- `swift build` runs with `-emit-const-values` and the frontend flag `-const-gather-protocols-file Scripts/app-intents-const-protocols.json`, which produce the compiler output the processor consumes. (Xcode 27 uses the driver flag `-const-gather-protocols-list`, but Swift 6.2 in Xcode 26 does not have it.)
 - After each architecture builds, the app module's `.swiftconstvalues` are staged next to its thin binary. Swift Build (Xcode 27) and the native build system (Xcode 26) write them in different places.
 - `xcrun appintentsmetadataprocessor` runs with Xcode's flags against the first architecture's binary and const values, writing `Metadata.appintents` into the bundle. The build fails if the metadata is missing.
 - App Shortcut phrases are localized through their own table. `Sources/Kaset/Resources/AppShortcuts.xcstrings` (Xcode's format: one key per shortcut, holding a string set of phrases per language) is compiled into the main bundle. It is excluded from SwiftPM resources and has no `.lproj` mirror, because only packaged builds carry metadata. The build fails when the catalog's keys differ from the phrases the processor extracted, or when a translation drops a placeholder.

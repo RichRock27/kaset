@@ -30,10 +30,12 @@ APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 # App Intents: the compiler records the intents, entities, and App Shortcuts it sees as
 # "const values", which appintentsmetadataprocessor turns into Metadata.appintents.
 APP_INTENTS_PROTOCOLS="$ROOT/Scripts/app-intents-const-protocols.json"
+# The protocol list goes to the frontend: Swift 6.2 (Xcode 26) has no driver-level
+# -const-gather-protocols-list, while every supported compiler accepts the frontend flag.
 APP_INTENTS_SWIFT_FLAGS=(
   -Xswiftc -emit-const-values
-  -Xswiftc -const-gather-protocols-list
-  -Xswiftc "$APP_INTENTS_PROTOCOLS"
+  -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file
+  -Xswiftc -Xfrontend -Xswiftc "$APP_INTENTS_PROTOCOLS"
 )
 APP_SHORTCUTS_CATALOG="$ROOT/Sources/Kaset/Resources/AppShortcuts.xcstrings"
 
