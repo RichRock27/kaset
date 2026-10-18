@@ -285,6 +285,7 @@ Remote command center integration for media key support:
 - Registers `MPRemoteCommandCenter` handlers
 - Handles media keys (play/pause, next, previous, seek)
 - Routes commands to `PlayerService` / `YouTubePlayerService` based on the active source
+- Admits App Intents transport commands through the same ingress (`handleAppIntentCommand`)
 
 **Note**: Now Playing display (track/video info, artwork) is handled natively by WKWebView's Media Session API. This provides better integration with YouTube Music artwork and regular YouTube video metadata.
 
@@ -538,6 +539,26 @@ tell application "Kaset"
     get player info  -- Returns JSON string
 end tell
 ```
+
+### App Intents (Shortcuts, Siri, Spotlight)
+
+**Directory**: `Sources/Kaset/Services/AppIntents/` · Decision record: [ADR-0033](adr/0033-app-intents.md) · User docs: [shortcuts.md](shortcuts.md)
+
+| File | Role |
+|------|------|
+| `AppIntentsBridge.swift` | `@MainActor` singleton configured in `KasetApp.init`: services, the deep-link readiness gate, the Library snapshot, and the operations intents call |
+| `PlaybackControlIntents.swift` | Play/pause, pause, resume, next/previous (via `NowPlayingManager.handleAppIntentCommand`), get current song, like/dislike |
+| `PlayContentIntents.swift` | Play music (search), song, playlist, album, Liked Music; playlist and album intents are also the entities' `OpenIntent`s |
+| `MusicEntities.swift` | `SongEntity`, `PlaylistEntity`, `AlbumEntity` (the latter two `IndexedEntity`) and their string queries |
+| `KasetShortcuts.swift` | `AppShortcutsProvider` with Siri phrases, localized from `Resources/AppShortcuts.xcstrings` |
+| `SpotlightLibraryIndexer.swift` | Replaces the Spotlight index with the signed-in Library's playlists and albums |
+
+**Implementation Details**:
+
+- `MainWindow` publishes the Library to the bridge once it has loaded (empty when signed out); the bridge reindexes Spotlight and refreshes App Shortcut parameters.
+- Playback intents set `openAppWhenRun`, wait for `AppIntentsBridge.isReady` (the same gate as `kaset://` deep links), and show the main window before playing.
+- `Scripts/build-app.sh` generates `Metadata.appintents` with `appintentsmetadataprocessor`, since SwiftPM has no App Intents build phase, and fails if `AppShortcuts.xcstrings` is out of sync with the phrases in code.
+- Intents only run in team-signed builds and from `/Applications` or `~/Applications`.
 
 ### UpdaterService
 

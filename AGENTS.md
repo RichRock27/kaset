@@ -47,6 +47,7 @@ Default local workflow is CLI-first: use the commands above for day-to-day verif
 
 - When adding localization keys or changing translations, update the catalog first and update the corresponding checked-in `.lproj/Localizable.strings` files in the same change. Never update only one side.
 - Run `swift test --skip KasetUITests --filter LocalizationCatalogParityTests` after localization changes.
+- Siri phrases for App Shortcuts live in `Sources/Kaset/Resources/AppShortcuts.xcstrings` (no `.lproj` mirror). `Scripts/build-app.sh` fails if it drifts from `KasetShortcuts`, so update it whenever a phrase changes.
 - When adding a locale, also register its `.lproj` in `Package.swift`, add the `SettingsManager.ContentLanguage` case, and extend localization tests.
 
 ## Debugging & Measurement
