@@ -152,11 +152,13 @@ stage_app_intents_const_values() {
     search_patterns+=(-o -path "*/${arch}-apple-macosx/${dir_name}/${APP_NAME}.build/*.swiftconstvalues")
   done < <(build_config_dir_names)
 
-  # Debug builds emit one file per source; skip leftovers from deleted sources.
+  # Debug builds emit one file per source (Foo.swiftconstvalues with Swift Build,
+  # Foo.swift.swiftconstvalues natively); skip leftovers from deleted sources.
   source_names=" $(find "$ROOT/Sources/$APP_NAME" -name '*.swift' -exec basename {} .swift \; | tr '\n' ' ') "
 
   while IFS= read -r file; do
     name=$(basename "$file" .swiftconstvalues)
+    name="${name%.swift}"
     case "$name" in
       "$APP_NAME" | "$APP_NAME-primary") ;;
       *) [[ "$source_names" == *" $name "* ]] || continue ;;
