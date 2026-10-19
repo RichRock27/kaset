@@ -630,3 +630,5 @@
 "Nothing is playing in Kaset." = "Kaset'te hiçbir şey çalmıyor.";
 "Sign in to YouTube Music in Kaset first." = "Önce Kaset'te YouTube Music'te oturum açın.";
 "No songs found for “%@”." = "“%@” için şarkı bulunamadı.";
+"Couldn't play “%@”." = "“%@” çalınamadı.";
+"Couldn't rate “%@”." = "“%@” derecelendirilemedi.";

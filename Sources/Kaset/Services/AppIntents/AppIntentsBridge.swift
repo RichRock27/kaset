@@ -12,6 +12,10 @@ enum AppIntentsError: Error, Equatable, CustomLocalizedStringResourceConvertible
     case signInRequired
     /// A search returned nothing playable.
     case noResults(query: String)
+    /// Content failed to load, had nothing playable, or newer playback replaced it first.
+    case playbackFailed(title: String)
+    /// YouTube Music did not accept the rating.
+    case ratingFailed(title: String)
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
@@ -23,6 +27,10 @@ enum AppIntentsError: Error, Equatable, CustomLocalizedStringResourceConvertible
             "Sign in to YouTube Music in Kaset first."
         case let .noResults(query):
             "No songs found for “\(query)”."
+        case let .playbackFailed(title):
+            "Couldn't play “\(title)”."
+        case let .ratingFailed(title):
+            "Couldn't rate “\(title)”."
         }
     }
 }
@@ -163,8 +171,8 @@ final class AppIntentsBridge {
 
     // MARK: Transport
 
-    /// Sends play/pause/skip through the media-key path. Throws when the player is not up yet,
-    /// which on a cold launch also means nothing is loaded to control.
+    /// Sends play/pause/skip through the media-key path. Throws when the player is not up yet or
+    /// has nothing loaded to control.
     func sendTransportCommand(_ payload: RemoteMusicCommandPayload) throws {
         guard self.isReady, self.transportHandler(payload) else {
             throw AppIntentsError.nothingPlaying
@@ -179,10 +187,10 @@ final class AppIntentsBridge {
         return self.playerService?.currentTrack
     }
 
-    /// Rates the current track. Rating is idempotent here, unlike the player-bar toggle:
-    /// asking to like an already-liked song leaves it liked.
+    /// Rates the current track once YouTube Music accepts it. Rating is idempotent here, unlike
+    /// the player-bar toggle: asking to like an already-liked song leaves it liked.
     @discardableResult
-    func rateCurrentSong(_ status: LikeStatus) throws -> Song {
+    func rateCurrentSong(_ status: LikeStatus) async throws -> Song {
         guard self.isReady, let playerService, let track = playerService.currentTrack else {
             throw AppIntentsError.nothingPlaying
         }
@@ -191,19 +199,9 @@ final class AppIntentsBridge {
         }
         guard playerService.currentTrackLikeStatus != status else { return track }
 
-        self.logger.info("Rating current track \(track.videoId) as \(String(describing: status))")
-        switch status {
-        case .like:
-            playerService.likeCurrentTrack()
-        case .dislike:
-            playerService.dislikeCurrentTrack()
-        case .indifferent:
-            // The player toggles back to indifferent from whichever rating is set.
-            if playerService.currentTrackLikeStatus == .like {
-                playerService.likeCurrentTrack()
-            } else {
-                playerService.dislikeCurrentTrack()
-            }
+        // A rejected rating rolls back to the previous status.
+        guard let rating = playerService.rateCurrentTrack(status), await rating.value == status else {
+            throw AppIntentsError.ratingFailed(title: track.title)
         }
         return track
     }
@@ -223,7 +221,8 @@ final class AppIntentsBridge {
     /// Plays a song and continues with its radio, like `kaset://play` and AppleScript `play video`.
     func play(song: Song) async throws {
         let (playerService, _) = try await self.preparePlayback()
-        await self.startRadio(from: song, playerService: playerService)
+        let intent = playerService.beginMusicPlaybackIntent()
+        await self.startRadio(from: song, playerService: playerService, intent: intent)
     }
 
     /// Plays the best song match for a free-text query.
@@ -232,19 +231,24 @@ final class AppIntentsBridge {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { throw AppIntentsError.noResults(query: query) }
         let (playerService, client) = try await self.preparePlayback()
+        // Playback the user starts while the search is in flight wins over its result.
+        let reservation = playerService.reserveMusicPlaybackIntent()
         guard let song = try await Self.bestSong(in: client.searchSongs(query: trimmedQuery)) else {
             throw AppIntentsError.noResults(query: trimmedQuery)
         }
-        await self.startRadio(from: song, playerService: playerService)
+        guard let intent = playerService.claimMusicPlaybackIntent(reservation) else {
+            throw AppIntentsError.playbackFailed(title: song.title)
+        }
+        await self.startRadio(from: song, playerService: playerService, intent: intent)
         return song
     }
 
-    private func startRadio(from song: Song, playerService: PlayerService) async {
+    private func startRadio(from song: Song, playerService: PlayerService, intent: MusicPlaybackIntent) async {
         self.logger.info("Playing song \(song.videoId)")
-        let intent = playerService.beginMusicPlaybackIntent()
         await playerService.playWithRadio(song: song, intent: intent)
     }
 
+    /// Returns once the playlist starts; a long playlist keeps paging in afterward.
     func play(playlist: Playlist) async throws {
         // Checked once startup has restored sign-in state, but before the window comes forward.
         if LikedMusicPlaylist.matches(id: playlist.id) {
@@ -253,13 +257,23 @@ final class AppIntentsBridge {
         }
         let (playerService, client) = try await self.preparePlayback()
         self.logger.info("Playing playlist \(playlist.id)")
-        await PlaylistPlaybackActions.playPlaylist(playlist, client: client, playerService: playerService).value
+        let started = await withCheckedContinuation { continuation in
+            PlaylistPlaybackActions.playPlaylist(playlist, client: client, playerService: playerService) { started in
+                continuation.resume(returning: started)
+            }
+        }
+        guard started else { throw AppIntentsError.playbackFailed(title: playlist.title) }
     }
 
     func play(album: Album) async throws {
         let (playerService, client) = try await self.preparePlayback()
         self.logger.info("Playing album \(album.id)")
-        await AlbumPlaybackActions.playAlbum(album, client: client, playerService: playerService).value
+        let started = await withCheckedContinuation { continuation in
+            AlbumPlaybackActions.playAlbum(album, client: client, playerService: playerService) { started in
+                continuation.resume(returning: started)
+            }
+        }
+        guard started else { throw AppIntentsError.playbackFailed(title: album.title) }
     }
 
     /// The first result that can actually be played.

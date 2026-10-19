@@ -630,3 +630,5 @@
 "Nothing is playing in Kaset." = "Inget spelas i Kaset.";
 "Sign in to YouTube Music in Kaset first." = "Logga in i YouTube Music i Kaset först.";
 "No songs found for “%@”." = "Inga låtar hittades för ”%@”.";
+"Couldn't play “%@”." = "Kunde inte spela ”%@”.";
+"Couldn't rate “%@”." = "Kunde inte betygsätta ”%@”.";

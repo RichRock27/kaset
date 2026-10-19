@@ -16,6 +16,44 @@ struct SpotlightLibraryIndexerTests {
         }
     }
 
+    /// Fails the first `failures` replacements.
+    private actor FlakyIndex: LibrarySpotlightIndex {
+        private var failures: Int
+        private(set) var attempts = 0
+
+        init(failures: Int) {
+            self.failures = failures
+        }
+
+        func replaceAll(playlists _: [PlaylistEntity], albums _: [AlbumEntity]) async throws {
+            self.attempts += 1
+            if self.failures > 0 {
+                self.failures -= 1
+                throw URLError(.cannotWriteToFile)
+            }
+        }
+    }
+
+    /// Holds the first replacement open and records how many ever overlap.
+    private actor GatedIndex: LibrarySpotlightIndex {
+        let firstStarted = AsyncGate()
+        let releaseFirst = AsyncGate()
+        private(set) var started: [[String]] = []
+        private(set) var maxConcurrent = 0
+        private var inFlight = 0
+
+        func replaceAll(playlists: [PlaylistEntity], albums _: [AlbumEntity]) async throws {
+            self.inFlight += 1
+            self.maxConcurrent = max(self.maxConcurrent, self.inFlight)
+            self.started.append(playlists.map(\.id))
+            if self.started.count == 1 {
+                await self.firstStarted.open()
+                await self.releaseFirst.wait()
+            }
+            self.inFlight -= 1
+        }
+    }
+
     private func makeLibrary(playlistIDs: [String], albumIDs: [String] = []) -> AppIntentsLibrary {
         AppIntentsLibrary(
             playlists: playlistIDs.map { TestFixtures.makePlaylist(id: $0, title: $0) },
@@ -82,6 +120,39 @@ struct SpotlightLibraryIndexerTests {
         #expect(replacements.count == 2)
         #expect(replacements.last?.playlists.isEmpty == true)
         #expect(replacements.last?.albums.isEmpty == true)
+    }
+
+    @Test("A failed replacement is retried a bounded number of times")
+    func retriesFailedReplacement() async {
+        let recovering = FlakyIndex(failures: 2)
+        let recoveringIndexer = SpotlightLibraryIndexer(index: recovering, debounce: .zero, retryDelay: .milliseconds(1))
+        recoveringIndexer.update(self.makeLibrary(playlistIDs: ["PL-retry"]))
+        await recoveringIndexer.waitForPendingUpdate()
+        #expect(await recovering.attempts == 3)
+
+        let broken = FlakyIndex(failures: .max)
+        let brokenIndexer = SpotlightLibraryIndexer(index: broken, debounce: .zero, retryDelay: .milliseconds(1))
+        brokenIndexer.update(self.makeLibrary(playlistIDs: ["PL-retry"]))
+        await brokenIndexer.waitForPendingUpdate()
+        #expect(await broken.attempts == SpotlightLibraryIndexer.maxAttempts)
+    }
+
+    @Test("A superseded update still waits for the replacement in flight")
+    func supersededUpdateStaysSerialized() async {
+        let index = GatedIndex()
+        let indexer = SpotlightLibraryIndexer(index: index, debounce: .zero)
+
+        indexer.update(self.makeLibrary(playlistIDs: ["PL-first"]))
+        await index.firstStarted.wait()
+        indexer.update(self.makeLibrary(playlistIDs: ["PL-superseded"]))
+        indexer.update(self.makeLibrary(playlistIDs: ["PL-latest"]))
+        // Gives an unserialized replacement time to start before the first one finishes.
+        try? await Task.sleep(for: .milliseconds(50))
+        await index.releaseFirst.open()
+        await indexer.waitForPendingUpdate()
+
+        #expect(await index.maxConcurrent == 1)
+        #expect(await index.started == [["PL-first"], ["PL-latest"]])
     }
 }
 

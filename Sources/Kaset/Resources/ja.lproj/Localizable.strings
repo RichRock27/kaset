@@ -625,3 +625,5 @@
 "Nothing is playing in Kaset." = "Kaset で再生中のものはありません。";
 "Sign in to YouTube Music in Kaset first." = "先に Kaset で YouTube Music にサインインしてください。";
 "No songs found for “%@”." = "「%@」に一致する曲が見つかりませんでした。";
+"Couldn't play “%@”." = "「%@」を再生できませんでした。";
+"Couldn't rate “%@”." = "「%@」を評価できませんでした。";

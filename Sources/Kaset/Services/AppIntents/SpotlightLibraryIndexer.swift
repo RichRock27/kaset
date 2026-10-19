@@ -36,16 +36,25 @@ struct CoreSpotlightLibraryIndex: LibrarySpotlightIndex {
 final class SpotlightLibraryIndexer {
     /// Library loads publish several snapshots in quick succession.
     static let defaultDebounce: Duration = .seconds(1)
+    /// A failed replacement is retried after this delay, doubling each time.
+    static let defaultRetryDelay: Duration = .seconds(5)
+    static let maxAttempts = 3
 
     private let index: any LibrarySpotlightIndex
     private let debounce: Duration
+    private let retryDelay: Duration
     private var indexedLibrary: AppIntentsLibrary?
     private var pendingTask: Task<Void, Never>?
     private let logger = DiagnosticsLogger.appIntents
 
-    init(index: any LibrarySpotlightIndex = CoreSpotlightLibraryIndex(), debounce: Duration = defaultDebounce) {
+    init(
+        index: any LibrarySpotlightIndex = CoreSpotlightLibraryIndex(),
+        debounce: Duration = defaultDebounce,
+        retryDelay: Duration = defaultRetryDelay
+    ) {
         self.index = index
         self.debounce = debounce
+        self.retryDelay = retryDelay
     }
 
     func update(_ library: AppIntentsLibrary) {
@@ -56,16 +65,23 @@ final class SpotlightLibraryIndexer {
         let albums = library.playableAlbums.map(AlbumEntity.init(album:))
         let previousTask = self.pendingTask
         previousTask?.cancel()
-        self.pendingTask = Task { [index, debounce, logger] in
+        self.pendingTask = Task { [index, debounce, retryDelay, logger] in
             try? await Task.sleep(for: debounce)
-            guard !Task.isCancelled else { return }
-            // An index replacement already in flight finishes before this one starts.
+            // Wait even when superseded, so the next snapshot cannot overlap a replacement still in flight.
             await previousTask?.value
-            do {
-                try await index.replaceAll(playlists: playlists, albums: albums)
-                logger.info("Indexed \(playlists.count) playlists and \(albums.count) albums in Spotlight")
-            } catch {
-                logger.error("Spotlight indexing failed: \(error.localizedDescription)")
+            var delay = retryDelay
+            for attempt in 1 ... Self.maxAttempts {
+                guard !Task.isCancelled else { return }
+                do {
+                    try await index.replaceAll(playlists: playlists, albums: albums)
+                    logger.info("Indexed \(playlists.count) playlists and \(albums.count) albums in Spotlight")
+                    return
+                } catch {
+                    logger.error("Spotlight indexing attempt \(attempt) failed: \(error.localizedDescription)")
+                }
+                guard attempt < Self.maxAttempts else { return }
+                try? await Task.sleep(for: delay)
+                delay *= 2
             }
         }
     }

@@ -628,3 +628,5 @@
 "Nothing is playing in Kaset." = "Kaset 中没有正在播放的内容。";
 "Sign in to YouTube Music in Kaset first." = "请先在 Kaset 中登录 YouTube Music。";
 "No songs found for “%@”." = "未找到与“%@”匹配的歌曲。";
+"Couldn't play “%@”." = "无法播放“%@”。";
+"Couldn't rate “%@”." = "无法评价“%@”。";

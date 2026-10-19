@@ -97,7 +97,7 @@ struct LikeCurrentSongIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<SongEntity> {
-        let song = try AppIntentsBridge.shared.rateCurrentSong(.like)
+        let song = try await AppIntentsBridge.shared.rateCurrentSong(.like)
         return .result(value: SongEntity(song: song))
     }
 }
@@ -110,7 +110,7 @@ struct DislikeCurrentSongIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<SongEntity> {
-        let song = try AppIntentsBridge.shared.rateCurrentSong(.dislike)
+        let song = try await AppIntentsBridge.shared.rateCurrentSong(.dislike)
         return .result(value: SongEntity(song: song))
     }
 }

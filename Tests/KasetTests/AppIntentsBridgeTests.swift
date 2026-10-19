@@ -48,11 +48,12 @@ struct AppIntentsBridgeTests {
         return bridge
     }
 
-    private func signedInPlayer() -> PlayerService {
+    private func signedInPlayer(client: MockYTMusicClient = MockYTMusicClient()) -> PlayerService {
         let authService = AuthService(webKitManager: MockWebKitManager())
         authService.completeLogin(sapisid: "test-sapisid")
         let player = PlayerService()
         player.setAuthService(authService)
+        player.setYTMusicClient(client)
         return player
     }
 
@@ -133,53 +134,87 @@ struct AppIntentsBridgeTests {
         }
     }
 
+    @Test("Media keys only accept intent commands when there is something to control")
+    func transportTargetRequiresMedia() {
+        let empty = PlayerService()
+        #expect(!NowPlayingManager.hasTransportTarget(player: empty, routesToYouTubeVideo: false))
+        #expect(NowPlayingManager.hasTransportTarget(player: empty, routesToYouTubeVideo: true))
+
+        let loaded = PlayerService()
+        loaded.currentTrack = TestFixtures.makeSong(id: "loaded")
+        #expect(NowPlayingManager.hasTransportTarget(player: loaded, routesToYouTubeVideo: false))
+
+        let restored = PlayerService()
+        restored.pendingPlayVideoId = "restored"
+        #expect(NowPlayingManager.hasTransportTarget(player: restored, routesToYouTubeVideo: false))
+    }
+
     // MARK: - Rating
 
     @Test("Rating without a current track reports nothing playing")
-    func ratingWithoutTrack() {
+    func ratingWithoutTrack() async {
         let bridge = self.makeBridge(playerService: self.signedInPlayer())
 
-        #expect(throws: AppIntentsError.nothingPlaying) {
-            try bridge.rateCurrentSong(.like)
+        await #expect(throws: AppIntentsError.nothingPlaying) {
+            try await bridge.rateCurrentSong(.like)
         }
     }
 
     @Test("Rating requires a personal account")
-    func ratingRequiresSignIn() {
+    func ratingRequiresSignIn() async {
         let player = PlayerService()
         player.currentTrack = TestFixtures.makeSong(id: "guest-track")
         let bridge = self.makeBridge(playerService: player)
 
-        #expect(throws: AppIntentsError.signInRequired) {
-            try bridge.rateCurrentSong(.like)
+        await #expect(throws: AppIntentsError.signInRequired) {
+            try await bridge.rateCurrentSong(.like)
         }
     }
 
     @Test("Liking an already-liked song leaves it liked")
-    func likeIsIdempotent() throws {
-        let player = self.signedInPlayer()
+    func likeIsIdempotent() async throws {
+        let client = MockYTMusicClient()
+        let player = self.signedInPlayer(client: client)
         player.currentTrack = TestFixtures.makeSong(id: "liked-track")
         player.currentTrackLikeStatus = .like
-        let bridge = self.makeBridge(playerService: player)
+        let bridge = self.makeBridge(playerService: player, client: client)
 
-        let song = try bridge.rateCurrentSong(.like)
+        let song = try await bridge.rateCurrentSong(.like)
 
         #expect(song.videoId == "liked-track")
         #expect(player.currentTrackLikeStatus == .like)
+        #expect(client.rateSongRatings.isEmpty)
     }
 
     @Test("Liking an unrated song likes it, and disliking replaces the like")
-    func ratingSetsRequestedStatus() throws {
-        let player = self.signedInPlayer()
+    func ratingSetsRequestedStatus() async throws {
+        let client = MockYTMusicClient()
+        let player = self.signedInPlayer(client: client)
         player.currentTrack = TestFixtures.makeSong(id: "rated-track")
         player.currentTrackLikeStatus = .indifferent
-        let bridge = self.makeBridge(playerService: player)
+        let bridge = self.makeBridge(playerService: player, client: client)
 
-        try bridge.rateCurrentSong(.like)
+        try await bridge.rateCurrentSong(.like)
         #expect(player.currentTrackLikeStatus == .like)
 
-        try bridge.rateCurrentSong(.dislike)
+        try await bridge.rateCurrentSong(.dislike)
         #expect(player.currentTrackLikeStatus == .dislike)
+        #expect(client.appliedRateSongRatings == [.like, .dislike])
+    }
+
+    @Test("A rating YouTube Music rejects reports failure and rolls back")
+    func rejectedRatingIsReported() async {
+        let client = MockYTMusicClient()
+        client.rateSongErrors = [URLError(.notConnectedToInternet)]
+        let player = self.signedInPlayer(client: client)
+        player.currentTrack = TestFixtures.makeSong(id: "rejected-track", title: "Rejected")
+        player.currentTrackLikeStatus = .indifferent
+        let bridge = self.makeBridge(playerService: player, client: client)
+
+        await #expect(throws: AppIntentsError.ratingFailed(title: "Rejected")) {
+            try await bridge.rateCurrentSong(.like)
+        }
+        #expect(player.currentTrackLikeStatus == .indifferent)
     }
 
     // MARK: - Playback
@@ -211,6 +246,33 @@ struct AppIntentsBridgeTests {
         #expect(client.searchQueries.last == "get lucky")
         #expect(environment.showMainWindowCount == 1)
         #expect(player.currentTrack?.videoId == "match")
+    }
+
+    @Test("Playback started during a search wins over the search result")
+    func newerPlaybackSupersedesSearchResult() async {
+        self.resetSingletonPlayer()
+        defer { self.resetSingletonPlayer() }
+        let client = MockYTMusicClient()
+        client.songsSearchResponse = SearchResponse(songs: [TestFixtures.makeSong(id: "match", title: "Get Lucky")])
+        let searchStarted = AsyncGate()
+        let releaseSearch = AsyncGate()
+        client.beforeSearchReturn = { _, _ in
+            await searchStarted.open()
+            await releaseSearch.wait()
+        }
+        let player = PlayerService()
+        player.setYTMusicClient(client)
+        let bridge = self.makeBridge(playerService: player, client: client)
+
+        let request = Task { try await bridge.playSearchResult(for: "get lucky") }
+        await searchStarted.wait()
+        await player.playQueue([TestFixtures.makeSong(id: "chosen")], startingAt: 0)
+        await releaseSearch.open()
+
+        await #expect(throws: AppIntentsError.playbackFailed(title: "Get Lucky")) {
+            try await request.value
+        }
+        #expect(player.currentTrack?.videoId == "chosen")
     }
 
     @Test("A search with nothing playable reports no results")
@@ -255,6 +317,62 @@ struct AppIntentsBridgeTests {
             try await bridge.play(playlist: LikedMusicPlaylist.playlist)
         }
         #expect(environment.showMainWindowCount == 0)
+    }
+
+    @Test("Playing a playlist returns once it starts, while the rest pages in")
+    func playlistReturnsBeforePaging() async throws {
+        self.resetSingletonPlayer()
+        defer { self.resetSingletonPlayer() }
+        let client = MockYTMusicClient()
+        let playlist = TestFixtures.makePlaylist(id: "VL-long", title: "Long")
+        client.playlistDetails[playlist.id] = PlaylistDetail(
+            playlist: playlist,
+            tracks: TestFixtures.makeSongs(count: 2),
+            duration: nil
+        )
+        client.playlistContinuationTracks[playlist.id] = [["more-1", "more-2"].map { TestFixtures.makeSong(id: $0) }]
+        let releaseContinuation = AsyncGate()
+        client.beforePlaylistContinuationReturn = { _ in await releaseContinuation.wait() }
+        // Lets a regression that waits for paging finish, and fail, instead of hanging.
+        let safetyRelease = Task {
+            try? await Task.sleep(for: .seconds(2))
+            await releaseContinuation.open()
+        }
+        defer { safetyRelease.cancel() }
+        let player = PlayerService()
+        let bridge = self.makeBridge(playerService: player, client: client)
+
+        try await bridge.play(playlist: playlist)
+
+        #expect(player.queue.map(\.videoId) == ["video-0", "video-1"])
+        await releaseContinuation.open()
+    }
+
+    @Test("A playlist that fails to load reports failure")
+    func playlistLoadFailureIsReported() async {
+        let client = MockYTMusicClient()
+        client.getPlaylistError = URLError(.notConnectedToInternet)
+        let bridge = self.makeBridge(client: client)
+
+        await #expect(throws: AppIntentsError.playbackFailed(title: "Offline Mix")) {
+            try await bridge.play(playlist: TestFixtures.makePlaylist(id: "VL-offline", title: "Offline Mix"))
+        }
+    }
+
+    @Test("An album with nothing playable reports failure")
+    func emptyAlbumIsReported() async {
+        let client = MockYTMusicClient()
+        let album = TestFixtures.makeAlbum(id: "MPREb_empty", title: "Empty")
+        client.playlistDetails[album.id] = PlaylistDetail(
+            playlist: TestFixtures.makePlaylist(id: album.id, title: album.title),
+            tracks: [],
+            duration: nil
+        )
+        let bridge = self.makeBridge(client: client)
+
+        await #expect(throws: AppIntentsError.playbackFailed(title: "Empty")) {
+            try await bridge.play(album: album)
+        }
     }
 
     // MARK: - Library

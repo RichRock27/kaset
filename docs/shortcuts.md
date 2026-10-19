@@ -19,7 +19,7 @@ Find these in Shortcuts by searching for "Kaset".
 | **Get Current Song** | Returns the playing song, with its title, artist, and album. |
 | **Like Current Song** / **Dislike Current Song** | Rates the playing song. Unlike the player-bar buttons, these never toggle a rating off. Requires sign-in. |
 
-Actions that start playback open Kaset, the same way a `kaset://` link does, and wait for it to finish launching. The transport actions (pause, resume, skip) control whichever source the media keys control, so they also work while a YouTube video is playing. If Kaset is not running, they report that nothing is playing.
+Actions that start playback open Kaset, the same way a `kaset://` link does, and wait for it to finish launching. The transport actions (pause, resume, skip) control whichever source the media keys control, so they also work while a YouTube video is playing. If Kaset is not running or has nothing loaded, they report that nothing is playing.
 
 ## Siri
 

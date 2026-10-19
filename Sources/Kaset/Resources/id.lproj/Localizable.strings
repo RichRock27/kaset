@@ -630,3 +630,5 @@
 "Nothing is playing in Kaset." = "Tidak ada yang diputar di Kaset.";
 "Sign in to YouTube Music in Kaset first." = "Masuk ke YouTube Music di Kaset terlebih dahulu.";
 "No songs found for “%@”." = "Tidak ada lagu yang ditemukan untuk “%@”.";
+"Couldn't play “%@”." = "Tidak dapat memutar “%@”.";
+"Couldn't rate “%@”." = "Tidak dapat memberi rating “%@”.";

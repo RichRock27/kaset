@@ -630,3 +630,5 @@
 "Nothing is playing in Kaset." = "У Kaset нічого не відтворюється.";
 "Sign in to YouTube Music in Kaset first." = "Спершу увійдіть у YouTube Music у Kaset.";
 "No songs found for “%@”." = "Не знайдено пісень за запитом «%@».";
+"Couldn't play “%@”." = "Не вдалося відтворити «%@».";
+"Couldn't rate “%@”." = "Не вдалося оцінити «%@».";

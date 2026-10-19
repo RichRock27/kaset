@@ -460,14 +460,22 @@ final class NowPlayingManager {
 
     /// Admits a transport command from App Intents through the media-key ingress, so Shortcuts
     /// and Siri control whichever source (music or video) the media keys would.
-    /// Returns false before `configure(playerService:)`, when there is nothing to control.
+    /// Returns false when there is nothing to control: before `configure(playerService:)`, or when
+    /// no video is routed and the music player has no track, pending load, or queue.
     @discardableResult
     func handleAppIntentCommand(_ payload: RemoteMusicCommandPayload) -> Bool {
-        guard self.playerService != nil else { return false }
+        guard let player = self.playerService,
+              Self.hasTransportTarget(player: player, routesToYouTubeVideo: self.routesToYouTubeVideo)
+        else { return false }
         if self.remoteMusicCommandIngress.capture(payload) {
             self.drainRemoteMusicCommandIngress()
         }
         return true
+    }
+
+    static func hasTransportTarget(player: PlayerService, routesToYouTubeVideo: Bool) -> Bool {
+        routesToYouTubeVideo || player.currentTrack != nil || player.currentEpisode != nil
+            || player.pendingPlayVideoId != nil || !player.queueEntries.isEmpty
     }
 
     private func drainRemoteMusicCommandIngress() {

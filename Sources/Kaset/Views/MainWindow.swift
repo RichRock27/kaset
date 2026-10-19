@@ -205,6 +205,12 @@ struct MainWindow: View { // swiftlint:disable:this type_body_length
                 guard let library else { return }
                 AppIntentsBridge.shared.updateLibrary(library)
             }
+            .onChange(of: self.libraryViewModel?.currentAccountScopeGeneration) { oldGeneration, _ in
+                // An account switch empties the Library, possibly mid-load. Drop the previous
+                // account's snapshot now rather than when the new account's Library loads.
+                guard oldGeneration != nil else { return }
+                AppIntentsBridge.shared.updateLibrary(.empty)
+            }
     }
 
     /// The Library as Shortcuts, Siri, and Spotlight should see it: empty when no personal

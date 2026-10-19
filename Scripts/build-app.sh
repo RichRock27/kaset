@@ -227,10 +227,11 @@ generate_app_intents_metadata() {
 
   # Siri matches App Shortcut phrases through AppShortcuts.strings. Like Xcode's catalog, each
   # App Shortcut is keyed by its first phrase and lists every phrase per language. Check that
-  # every shortcut in code has an entry and that no translation drops a placeholder, which
-  # would make the phrase unusable.
+  # every shortcut in code has an entry in every shipped language and that no translation drops
+  # a placeholder, which would make the phrase unusable.
   python3 - "$work_dir/ExtractedAppShortcutsMetadata.stringsdata" "$APP_SHORTCUTS_CATALOG" <<'PY'
 import json
+import pathlib
 import re
 import sys
 
@@ -238,6 +239,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     extracted = json.load(handle)
 with open(sys.argv[2], encoding="utf-8") as handle:
     catalog = json.load(handle).get("strings", {})
+languages = {path.stem for path in pathlib.Path(sys.argv[2]).parent.glob("*.lproj")}
 
 shortcuts = {entry["key"]: entry["values"] for entry in extracted.get("tables", {}).get("AppShortcuts", [])}
 if not shortcuts:
@@ -251,6 +253,8 @@ for key, phrases in sorted(shortcuts.items()):
         errors.append(f"missing catalog entry: {key}")
         continue
     expected = set(placeholders.findall(key))
+    for language in sorted(languages - set(entry.get("localizations", {}))):
+        errors.append(f"{language}: no phrases for {key}")
     for language, localization in sorted(entry.get("localizations", {}).items()):
         values = localization.get("stringSet", {}).get("values", [])
         if not values:
