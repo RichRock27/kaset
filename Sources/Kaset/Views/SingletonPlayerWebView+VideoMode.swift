@@ -231,13 +231,24 @@ extension SingletonPlayerWebView {
                 });
             })();
         """
-        self.webView?.evaluateJavaScript(script) { result, error in
+        self.webView?.evaluateJavaScript(script) { [weak self] result, error in
             DiagnosticsLogger.player.error("VIDEODIAG \(String(describing: result), privacy: .public) err=\(String(describing: error), privacy: .public)")
+            // No picture (the track has no video): close the window instead of leaving a black one.
+            guard let self,
+                  self.displayMode == .video,
+                  let json = result as? String,
+                  let data = json.data(using: .utf8),
+                  let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  (info["videoWidth"] as? Int) == 0
+            else { return }
+            DiagnosticsLogger.player.info("Video mode has no picture - closing video window")
+            self.removeBlackoutOnly()
+            self.coordinator?.playerService.showVideo = false
         }
     }
 
     /// Helper to remove blackout overlay on failures
-    private func removeBlackoutOnly() {
+    func removeBlackoutOnly() {
         self.webView?.evaluateJavaScript("const b = document.getElementById('kaset-blackout'); if (b) b.remove();")
     }
 
