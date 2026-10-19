@@ -200,6 +200,42 @@ extension SingletonPlayerWebView {
         }
     }
 
+    /// Diagnostic: records what the page looks like a moment after video mode is applied.
+    func logVideoModeAfterState() {
+        let script = """
+            (function() {
+                const v = document.querySelector('video');
+                const pp = document.querySelector('ytmusic-player-page');
+                const sw = document.querySelector('ytmusic-av-switcher');
+                const r = v ? v.getBoundingClientRect() : null;
+                const cs = v ? getComputedStyle(v) : null;
+                const chain = [];
+                let e = v;
+                for (let i = 0; e && i < 8; i++, e = e.parentElement) {
+                    const c = getComputedStyle(e);
+                    const b = e.getBoundingClientRect();
+                    chain.push((e.tagName + '#' + e.id + ' ' + Math.round(b.width) + 'x' + Math.round(b.height)
+                        + ' op=' + c.opacity + ' vis=' + c.visibility + ' disp=' + c.display));
+                }
+                return JSON.stringify({
+                    videoWidth: v ? v.videoWidth : null, videoHeight: v ? v.videoHeight : null,
+                    readyState: v ? v.readyState : null, paused: v ? v.paused : null,
+                    rect: r ? [Math.round(r.width), Math.round(r.height)] : null,
+                    opacity: cs ? cs.opacity : null, visibility: cs ? cs.visibility : null,
+                    videoMode: pp ? pp.videoMode : null,
+                    switcher: sw ? sw.innerText.trim().replace(/\\s+/g, ' ') : null,
+                    blackout: !!document.getElementById('kaset-blackout'),
+                    chain: chain,
+                    inner: [window.innerWidth, window.innerHeight],
+                    url: location.href
+                });
+            })();
+        """
+        self.webView?.evaluateJavaScript(script) { result, error in
+            DiagnosticsLogger.player.error("VIDEODIAG \(String(describing: result), privacy: .public) err=\(String(describing: error), privacy: .public)")
+        }
+    }
+
     /// Helper to remove blackout overlay on failures
     private func removeBlackoutOnly() {
         self.webView?.evaluateJavaScript("const b = document.getElementById('kaset-blackout'); if (b) b.remove();")
@@ -221,6 +257,10 @@ extension SingletonPlayerWebView {
             }
             DiagnosticsLogger.player.info("Video mode styles (In-place) successfully injected")
             self?.removeBlackoutOnly()
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(2500))
+                self?.logVideoModeAfterState()
+            }
         }
     }
 
