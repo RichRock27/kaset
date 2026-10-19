@@ -7,6 +7,16 @@ import WebKit
 struct VideoPlayerWindow: View {
     @Environment(PlayerService.self) private var playerService
 
+    /// The track's thumbnail is a 60x60 image; Google image URLs accept a size suffix, so ask for a large one.
+    private static func largeArtworkURL(_ url: URL?) -> URL? {
+        guard let url, let host = url.host,
+              host.contains("googleusercontent.com") || host.contains("ggpht.com")
+        else { return url }
+        let string = url.absoluteString
+        guard let range = string.range(of: "=[ws][0-9][^/?]*$", options: .regularExpression) else { return url }
+        return URL(string: String(string[..<range.lowerBound]) + "=w1200-h1200-l90-rj") ?? url
+    }
+
     var body: some View {
         // The Window controls the aspect ratio and min size;
         // using .fit here can cause the webview to shrink/be letterboxed incorrectly during fast resize.
@@ -16,7 +26,7 @@ struct VideoPlayerWindow: View {
                 if self.playerService.videoHasNoPicture {
                     ZStack {
                         Color.black
-                        AsyncImage(url: self.playerService.currentTrack?.thumbnailURL) { image in
+                        AsyncImage(url: Self.largeArtworkURL(self.playerService.currentTrack?.thumbnailURL)) { image in
                             image.resizable().aspectRatio(contentMode: .fit)
                         } placeholder: {
                             Color.clear
