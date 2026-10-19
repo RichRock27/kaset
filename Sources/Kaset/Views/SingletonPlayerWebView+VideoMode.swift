@@ -9,6 +9,7 @@ extension SingletonPlayerWebView {
         guard let webView, self.displayMode != mode else { return }
         DiagnosticsLogger.player.info("SingletonPlayerWebView.updateDisplayMode: \(String(describing: mode), privacy: .public)")
         self.displayMode = mode
+        self.coordinator?.playerService.videoHasNoPicture = false
 
         switch mode {
         case .hidden:
@@ -241,9 +242,9 @@ extension SingletonPlayerWebView {
                   let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   (info["videoWidth"] as? Int) == 0
             else { return }
-            DiagnosticsLogger.player.info("Video mode has no picture - closing video window")
+            DiagnosticsLogger.player.info("Video mode has no picture - showing album art")
             self.removeBlackoutOnly()
-            self.coordinator?.playerService.showVideo = false
+            self.coordinator?.playerService.videoHasNoPicture = true
         }
     }
 

@@ -12,6 +12,18 @@ struct VideoPlayerWindow: View {
         // using .fit here can cause the webview to shrink/be letterboxed incorrectly during fast resize.
         VideoWebViewContainer(videoId: self.playerService.pendingPlayVideoId)
             .background(.black)
+            .overlay {
+                if self.playerService.videoHasNoPicture {
+                    ZStack {
+                        Color.black
+                        AsyncImage(url: self.playerService.currentTrack?.thumbnailURL) { image in
+                            image.resizable().aspectRatio(contentMode: .fit)
+                        } placeholder: {
+                            Color.clear
+                        }
+                    }
+                }
+            }
             .accessibilityIdentifier(AccessibilityID.VideoWindow.container)
     }
 }

@@ -480,6 +480,9 @@ final class PlayerService: NSObject, PlayerServiceProtocol {
     /// the detection can be unreliable when video mode CSS is active.
     var showVideo: Bool = false
 
+    /// True when video mode is open but the current track has no picture (show album art instead).
+    var videoHasNoPicture: Bool = false
+
     /// Whether AirPlay is currently connected (playing to a wireless target).
     var isAirPlayConnected: Bool = false
 
