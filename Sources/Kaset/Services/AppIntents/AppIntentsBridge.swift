@@ -222,6 +222,8 @@ final class AppIntentsBridge {
 
     /// Plays a song and continues with its radio, like `kaset://play` and AppleScript `play video`.
     func play(song: Song) async throws {
+        // A known-unavailable song would replace the queue without anything to play.
+        guard song.isPlayable else { throw AppIntentsError.playbackFailed(title: song.title) }
         let (playerService, _) = try await self.preparePlayback()
         let intent = playerService.beginMusicPlaybackIntent()
         await self.startRadio(from: song, playerService: playerService, intent: intent)

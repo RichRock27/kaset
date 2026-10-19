@@ -77,11 +77,11 @@ enum AlbumPlaybackActions {
                     album: album,
                     purpose: .playback(trackCount: response.detail.tracks.count)
                 )
-                // Unavailable tracks stay in the album queue, but an album with none playable is not started.
-                guard songs.contains(where: \.isPlayable) else { return }
+                // Unavailable tracks stay in the album queue, but playback starts at the first playable one.
+                guard let startIndex = songs.firstIndex(where: \.isPlayable) else { return }
                 await playerService.playQueue(
                     songs,
-                    startingAt: 0,
+                    startingAt: startIndex,
                     deferringSmartShuffleFill: false,
                     intent: intent
                 )

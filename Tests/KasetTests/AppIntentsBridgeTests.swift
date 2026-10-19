@@ -396,6 +396,43 @@ struct AppIntentsBridgeTests {
         #expect(player.queue.isEmpty)
     }
 
+    @Test("An album starts at its first playable track")
+    func albumStartsAtFirstPlayableTrack() async throws {
+        self.resetSingletonPlayer()
+        defer { self.resetSingletonPlayer() }
+        let client = MockYTMusicClient()
+        let album = TestFixtures.makeAlbum(id: "MPREb_partial", title: "Partial")
+        client.playlistDetails[album.id] = PlaylistDetail(
+            playlist: TestFixtures.makePlaylist(id: album.id, title: album.title),
+            tracks: [
+                Song(id: "blocked", title: "Blocked", artists: [], videoId: "blocked", isPlayable: false),
+                TestFixtures.makeSong(id: "playable"),
+            ],
+            duration: nil
+        )
+        let player = PlayerService()
+        let bridge = self.makeBridge(playerService: player, client: client)
+
+        try await bridge.play(album: album)
+
+        #expect(player.queue.map(\.videoId) == ["blocked", "playable"])
+        #expect(player.currentTrack?.videoId == "playable")
+    }
+
+    @Test("A song known to be unavailable keeps that through its entity and is not played")
+    func unavailableSongIsRejected() async {
+        let environment = Environment()
+        let bridge = self.makeBridge(environment: environment)
+        let blocked = Song(id: "blocked", title: "Blocked", artists: [], videoId: "blocked", isPlayable: false)
+        let entitySong = SongEntity(song: blocked).song
+        #expect(!entitySong.isPlayable)
+
+        await #expect(throws: AppIntentsError.playbackFailed(title: "Blocked")) {
+            try await bridge.play(song: entitySong)
+        }
+        #expect(environment.showMainWindowCount == 0)
+    }
+
     @Test("A saved song outside the queue is looked up on YouTube Music")
     func savedSongLookup() async {
         let client = MockYTMusicClient()

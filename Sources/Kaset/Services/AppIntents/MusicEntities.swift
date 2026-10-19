@@ -21,6 +21,7 @@ struct SongEntity: AppEntity {
     var album: String?
 
     let thumbnailURL: URL?
+    let isPlayable: Bool
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
@@ -33,6 +34,7 @@ struct SongEntity: AppEntity {
     init(song: Song) {
         self.id = song.videoId
         self.thumbnailURL = song.thumbnailURL
+        self.isPlayable = song.isPlayable
         self.title = song.title
         self.artist = song.artistsDisplay
         self.album = song.album?.title
@@ -45,7 +47,8 @@ struct SongEntity: AppEntity {
             title: self.title,
             artists: [],
             thumbnailURL: self.thumbnailURL,
-            videoId: self.id
+            videoId: self.id,
+            isPlayable: self.isPlayable
         )
     }
 }
@@ -70,11 +73,11 @@ struct SongEntityQuery: EntityStringQuery {
         try await AppIntentsBridge.shared.searchSongs(matching: string).map(SongEntity.init(song:))
     }
 
-    /// The current queue, so Shortcuts can offer what is already playing.
+    /// The current queue's playable songs, so Shortcuts can offer what is already playing.
     @MainActor
     func suggestedEntities() async throws -> [SongEntity] {
         let queue = AppIntentsBridge.shared.playerService?.queue ?? []
-        return Array(queue.prefix(25)).map(SongEntity.init(song:))
+        return Array(queue.filter(\.isPlayable).prefix(25)).map(SongEntity.init(song:))
     }
 }
 
