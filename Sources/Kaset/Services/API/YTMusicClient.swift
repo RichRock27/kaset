@@ -2205,6 +2205,10 @@ final class YTMusicClient: YTMusicClientProtocol {
 
             // Handle auth errors
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                let body = String(data: data.prefix(1500), encoding: .utf8) ?? "<non-utf8>"
+                let path = request.url?.path ?? "?"
+                Logger(subsystem: "com.sertacozercan.Kaset", category: "Diag403")
+                    .error("403DIAG path=\(path, privacy: .public) status=\(httpResponse.statusCode) body=\(body, privacy: .public)")
                 return .authError(statusCode: httpResponse.statusCode)
             }
 
