@@ -1302,6 +1302,12 @@ final class SingletonPlayerWebView {
         contentController.addUserScript(pageBootstrapScript)
 
         contentController.addUserScript(WKUserScript(
+            source: YTMAdBlock.script,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+
+        contentController.addUserScript(WKUserScript(
             source: WebPlaybackAudioOutput.script,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
