@@ -77,7 +77,8 @@ enum AlbumPlaybackActions {
                     album: album,
                     purpose: .playback(trackCount: response.detail.tracks.count)
                 )
-                guard !songs.isEmpty else { return }
+                // Unavailable tracks stay in the album queue, but an album with none playable is not started.
+                guard songs.contains(where: \.isPlayable) else { return }
                 await playerService.playQueue(
                     songs,
                     startingAt: 0,

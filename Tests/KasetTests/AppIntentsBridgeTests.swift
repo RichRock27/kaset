@@ -217,6 +217,25 @@ struct AppIntentsBridgeTests {
         #expect(player.currentTrackLikeStatus == .indifferent)
     }
 
+    @Test("A repeated rating waits for the pending one instead of trusting the optimistic status")
+    func repeatedRatingWaitsForPendingRequest() async {
+        let client = MockYTMusicClient()
+        client.rateSongDelay = .milliseconds(20)
+        client.rateSongErrors = [URLError(.notConnectedToInternet), URLError(.notConnectedToInternet)]
+        let player = self.signedInPlayer(client: client)
+        player.currentTrack = TestFixtures.makeSong(id: "pending-track", title: "Pending")
+        player.currentTrackLikeStatus = .indifferent
+        let bridge = self.makeBridge(playerService: player, client: client)
+
+        // The player-bar like is still in flight when the intent asks for the same rating.
+        player.likeCurrentTrack()
+        await #expect(throws: AppIntentsError.ratingFailed(title: "Pending")) {
+            try await bridge.rateCurrentSong(.like)
+        }
+        #expect(client.rateSongRatings == [.like, .like])
+        #expect(player.currentTrackLikeStatus == .indifferent)
+    }
+
     // MARK: - Playback
 
     @Test("The best song is the first playable result")
@@ -360,19 +379,33 @@ struct AppIntentsBridgeTests {
     }
 
     @Test("An album with nothing playable reports failure")
-    func emptyAlbumIsReported() async {
+    func unavailableAlbumIsReported() async {
         let client = MockYTMusicClient()
-        let album = TestFixtures.makeAlbum(id: "MPREb_empty", title: "Empty")
+        let album = TestFixtures.makeAlbum(id: "MPREb_unavailable", title: "Unavailable")
         client.playlistDetails[album.id] = PlaylistDetail(
             playlist: TestFixtures.makePlaylist(id: album.id, title: album.title),
-            tracks: [],
+            tracks: [Song(id: "blocked", title: "Blocked", artists: [], videoId: "blocked", isPlayable: false)],
             duration: nil
         )
-        let bridge = self.makeBridge(client: client)
+        let player = PlayerService()
+        let bridge = self.makeBridge(playerService: player, client: client)
 
-        await #expect(throws: AppIntentsError.playbackFailed(title: "Empty")) {
+        await #expect(throws: AppIntentsError.playbackFailed(title: "Unavailable")) {
             try await bridge.play(album: album)
         }
+        #expect(player.queue.isEmpty)
+    }
+
+    @Test("A saved song outside the queue is looked up on YouTube Music")
+    func savedSongLookup() async {
+        let client = MockYTMusicClient()
+        client.songResponses["saved"] = TestFixtures.makeSong(id: "saved", title: "Saved Song")
+        let bridge = self.makeBridge(client: client)
+
+        #expect(await bridge.song(videoId: "saved")?.title == "Saved Song")
+
+        client.getSongErrors = [URLError(.notConnectedToInternet)]
+        #expect(await bridge.song(videoId: "offline") == nil)
     }
 
     // MARK: - Library

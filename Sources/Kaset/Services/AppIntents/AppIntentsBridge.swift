@@ -197,7 +197,9 @@ final class AppIntentsBridge {
         guard playerService.canPerformAccountMutation else {
             throw AppIntentsError.signInRequired
         }
-        guard playerService.currentTrackLikeStatus != status else { return track }
+        // A pending rating already shows optimistically, so wait on the serialized path instead of trusting it.
+        let isPending = playerService.songLikeStatusManager.hasPendingRating(for: track.videoId)
+        guard playerService.currentTrackLikeStatus != status || isPending else { return track }
 
         // A rejected rating rolls back to the previous status.
         guard let rating = playerService.rateCurrentTrack(status), await rating.value == status else {

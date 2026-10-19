@@ -53,15 +53,16 @@ struct SongEntity: AppEntity {
 // MARK: - SongEntityQuery
 
 struct SongEntityQuery: EntityStringQuery {
-    /// Resolves saved Shortcuts parameters. Playback needs only the video ID, so an ID that is not
-    /// in the queue resolves without a network request.
+    /// Resolves saved Shortcuts parameters from the queue, or YouTube Music for other songs.
+    /// Playback needs only the video ID, so a failed lookup still resolves, with placeholder metadata.
     @MainActor
     func entities(for identifiers: [SongEntity.ID]) async throws -> [SongEntity] {
-        let queue = AppIntentsBridge.shared.playerService?.queue ?? []
-        return identifiers.map { videoId in
-            let song = queue.first { $0.videoId == videoId } ?? Song.placeholder(videoId: videoId)
-            return SongEntity(song: song)
+        var entities: [SongEntity] = []
+        for videoId in identifiers {
+            let song = await AppIntentsBridge.shared.song(videoId: videoId) ?? Song.placeholder(videoId: videoId)
+            entities.append(SongEntity(song: song))
         }
+        return entities
     }
 
     @MainActor
