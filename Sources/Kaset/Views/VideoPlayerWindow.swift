@@ -34,6 +34,7 @@ struct VideoPlayerWindow: View {
                     }
                 }
             }
+            .ignoresSafeArea()
             .accessibilityIdentifier(AccessibilityID.VideoWindow.container)
     }
 }
